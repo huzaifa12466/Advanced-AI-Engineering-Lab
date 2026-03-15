@@ -1,0 +1,11 @@
+neo4j==5.18.0
+qdrant-client==1.9.1
+sentence-transformers==2.7.0
+instructor==1.2.6
+groq==0.5.0
+openai==1.25.0
+llama-index==0.10.40
+llama-index-llms-groq==0.1.4
+pydantic==2.7.1
+python-dotenv==1.0.1
+matplotlib==3.8.4
