@@ -58,7 +58,7 @@ Advanced-AI-Engineering-Lab/
 
 **Goal:** Build a production-grade GraphRAG system for FinTech that goes beyond Microsoft GraphRAG and LlamaIndex — full control, no black boxes.
 
-![Architecture](Financial-GraphRAG-Sprint1/assets/architecture.png)
+![Architecture](Financial-GraphRAG-Sprint1/assets/graphrag_architecture.png)
 
 **What was built:**
 
