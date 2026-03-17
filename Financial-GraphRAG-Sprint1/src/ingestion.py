@@ -188,20 +188,32 @@ def create_qdrant_collection(client: QdrantClient, name: str, dimension: int = E
 
 def get_all_entities_from_neo4j(graph_db: Neo4jGraph) -> List[dict]:
     """
-    Fetch all Company and CEO nodes from Neo4j.
+    Fetch all Company and CEO nodes from Neo4j, including their properties.
+    Properties are used to build a rich embedding string.
 
     Returns:
-        List of dicts: {name, label, id}
+        List of dicts: {name, label, id, sector, profit_loss, previous_companies}
     """
     results = graph_db.run_query("""
         MATCH (n)
         WHERE (n:CEO OR n:Company)
-        RETURN DISTINCT n.name       AS name,
-                        labels(n)[0] AS label,
-                        n.id         AS id
+        RETURN DISTINCT n.name            AS name,
+                        labels(n)[0]      AS label,
+                        n.id              AS id,
+                        n.sector          AS sector,
+                        n.profit_loss     AS profit_loss
         ORDER BY n.name
     """)
-    return [{"name": r["name"], "label": r["label"], "id": r["id"]} for r in results]
+    entities = []
+    for r in results:
+        entities.append({
+            "name":         r["name"],
+            "label":        r["label"],
+            "id":           r["id"],
+            "sector":       r["sector"],
+            "profit_loss":  r["profit_loss"],
+        })
+    return entities
 
 
 def ingest_entities_to_qdrant(graph_db: Neo4jGraph, collection_name: str,
@@ -222,7 +234,20 @@ def ingest_entities_to_qdrant(graph_db: Neo4jGraph, collection_name: str,
     print(f"  📦 Ingesting {len(entities)} entities...")
 
     for entity in entities:
-        embedding = embed_model.encode(entity['name']).tolist()
+        # ── Build a rich text string combining entity identity + properties ──
+        # Embedding the name alone loses all context. By joining the entity's
+        # label, sector, and financial performance into one string, the vector
+        # captures semantic meaning far beyond just the company name.
+        parts = [f"{entity['name']} ({entity['label']})"]
+        if entity.get("sector"):
+            parts.append(f"Sector: {entity['sector']}")
+        if entity.get("profit_loss") is not None:
+            direction = "Profit" if entity["profit_loss"] >= 0 else "Loss"
+            parts.append(f"{direction}: {abs(entity['profit_loss'])}M USD")
+
+        embed_text = " | ".join(parts)  # e.g. "Visa (Company) | Sector: Payments | Profit: 17273M USD"
+
+        embedding = embed_model.encode(embed_text).tolist()
         qdrant.upsert(
             collection_name=collection_name,
             points=[
@@ -230,9 +255,10 @@ def ingest_entities_to_qdrant(graph_db: Neo4jGraph, collection_name: str,
                     id=str(uuid.uuid4()),   # Qdrant's own ID
                     vector=embedding,
                     payload={
-                        "name":     entity['name'],
-                        "label":    entity['label'],
-                        "neo4j_id": entity['id']    # ← Bridge to Neo4j
+                        "name":      entity['name'],
+                        "label":     entity['label'],
+                        "neo4j_id":  entity['id'],    # ← Bridge to Neo4j
+                        "embed_text": embed_text       # ← Store for inspection
                     }
                 )
             ]

@@ -69,8 +69,6 @@ We solve this with **three innovations**:
 
 ## 3. Core Architecture
 
-![Pipeline Architecture](assets/architecture.png)
-
 ```
                         USER QUERY
                             │
@@ -106,14 +104,8 @@ We solve this with **three innovations**:
 
 ### Step-by-Step Pipeline
 
-**Step 1 — Intelligent Extraction**
-Raw financial text is processed by LLM + Instructor to extract structured triplets:
-```
-"Visa dominates payment processing with 40% market share"
-→ Node: Visa (Company)
-→ Node: PayPal (Company)
-→ Relationship: FINANCIAL_IMPACT {impact_percentage: 35%}
-```
+**Step 1 — Real Company Data via LLM**
+The LLM is prompted to return real, well-known FinTech companies (Visa, Mastercard, PayPal, Stripe, etc.) and generate their profiles grounded in actual market knowledge — real CEOs, realistic financials, and actual industry relationships.
 
 **Step 2 — Community Detection (Leiden Algorithm)**
 Neo4j GDS runs the Leiden algorithm with `includeIntermediateCommunities: true` to build a hierarchy:
@@ -136,9 +128,62 @@ GLOBAL → Level-filtered Qdrant summary search → Answer
 
 ---
 
-## 4. The Challenges — Real Engineering Problems Solved
+## 4. Key Design Decisions & Fixes
 
-### Challenge 1: Entity Resolution (Duplicate Names)
+### Fix 1: Real Companies — Not Fictional Data
+
+**Problem:** Original prompts asked the LLM to generate fictional FinTech company names. This meant all relationship data, CEO names, and financials were hallucinated with no grounding.
+
+**Solution:** Prompts now explicitly request **real, well-known FinTech companies** from the global market:
+```python
+# WRONG — fictional, ungrounded data
+"Generate N unique fictional FinTech company names..."
+
+# CORRECT — grounded in real-world LLM knowledge
+"Return a list of exactly N real, well-known FinTech companies
+ like Visa, Mastercard, PayPal, Stripe, Revolut, Coinbase..."
+```
+Real companies means the LLM draws on actual market knowledge: real CEOs (Ryan McInerney at Visa, Alex Chriss at PayPal), real financials, and real competitive relationships.
+
+---
+
+### Fix 2: Rich Entity Embedding (Name + Properties)
+
+**Problem:** Qdrant was only embedding the entity *name* string (e.g., `"Visa"`). This loses all semantic context — the vector for "Visa" is identical in meaning to the vector for any unknown string of similar characters.
+
+**Solution:** Entity name, label, sector, and financial performance are joined into a **single rich string** before embedding:
+```python
+# WRONG — name-only embedding loses all context
+embedding = embed_model.encode(entity['name'])
+
+# CORRECT — rich combined string captures full entity context
+embed_text = "Visa (Company) | Sector: Payments | Profit: 17273M USD"
+embedding = embed_model.encode(embed_text)
+```
+The combined string is also stored in Qdrant's payload (`embed_text` field) so it can be inspected during debugging.
+
+---
+
+### Fix 3: Neo4j Result Generator — Explicit Loop
+
+**Problem:** `session.run()` in the Neo4j Python driver returns a **lazy Result generator** — not a list. Using `return [record for record in result]` outside a proper loop pattern can silently fail at scale, and more importantly, the intent of consuming a generator should be explicit.
+
+**Solution:** Replaced with an explicit `for` loop that makes the generator consumption unambiguous:
+```python
+# WRONG — implicit, opaque consumption
+return [record for record in result]
+
+# CORRECT — explicit loop, generator consumed while session is live
+records = []
+for record in result:   # consume the generator while session is open
+    records.append(record)
+return records
+```
+Records must be materialised *inside* the `with self.driver.session()` block — once the session closes, the cursor is no longer valid.
+
+---
+
+### Fix 4: Entity Resolution (Duplicate Names)
 **Problem:** LLM extracted "Tim Cook", "Timothy Cook", and "Tim D. Cook" as three separate entities.
 
 **Solution:** Implemented a deduplication pass using Pydantic validators + Neo4j `MERGE` statements:
@@ -150,7 +195,7 @@ SET n.name = $canonical_name
 
 ---
 
-### Challenge 2: Neo4j GDS — NullPointerException Bug
+### Fix 5: Neo4j GDS — NullPointerException Bug
 **Problem:** Running Leiden with `includeIntermediateCommunities: false` caused a `NullPointerException` crash in Neo4j GDS.
 
 **Root Cause:** A known bug in Neo4j GDS's Leiden implementation — the `DendrogramManager` is not initialized on the `false` code path, but an internal function still calls it.
@@ -166,7 +211,7 @@ SET n.name = $canonical_name
 
 ---
 
-### Challenge 3: Prompt Engineering for Graph Grounding
+### Fix 6: Prompt Engineering for Graph Grounding
 **Problem:** LLM would "hallucinate" connections not present in the graph data.
 
 **Solution:** Explicit grounding instructions in every prompt:
@@ -179,21 +224,22 @@ INSTRUCTIONS:
 
 ---
 
-### Challenge 4: Qdrant ID Bridge (Critical Architecture Fix)
+### Fix 7: Qdrant ID Bridge (Critical Architecture Fix)
 **Problem:** Original implementation zipped chunk IDs with node IDs — a silent truncation bug that caused ID mismatches at scale.
 
 **Solution:** Each Neo4j node's `id` is stored directly in the Qdrant payload:
 ```python
 payload = {
-    "name":     entity_name,
-    "neo4j_id": neo4j_node_id  # ← Direct bridge, no mapping needed
+    "name":       entity_name,
+    "neo4j_id":   neo4j_node_id,  # ← Direct bridge, no mapping needed
+    "embed_text": embed_text       # ← Full string used for embedding
 }
 ```
 This creates a **guaranteed 1:1 bridge** between Qdrant vectors and Neo4j nodes.
 
 ---
 
-### Challenge 5: Latency vs. Accuracy in Global Queries
+### Fix 8: Latency vs. Accuracy in Global Queries
 **Problem:** Sending all community summaries to LLM was slow and expensive (Microsoft GraphRAG's approach).
 
 **Solution:** Qdrant payload filtering — only relevant summaries are retrieved:
@@ -216,17 +262,17 @@ Unlike Microsoft GraphRAG or LlamaIndex PropertyGraph (which are installation-an
 | Storage | Parquet files | Variable | Neo4j + Qdrant ✅ |
 | Multi-hop | ❌ | Limited | 1..2 hop Cypher ✅ |
 | Community search | All summaries → LLM 💸 | Basic | Level-filtered ✅ |
+| Entity data | Fictional/synthetic | N/A | Real companies ✅ |
+| Embedding strategy | Name only | Name only | Name + Properties ✅ |
 | ID mapping | N/A | Black box | Direct bridge ✅ |
 | Production ready | ❌ | ❌ | ✅ |
 
 ### Real Financial Network Data
 
-![GraphRAG Stats](assets/graphrag_stats.png)
-
-Tested on a synthetic-but-realistic FinTech dataset:
-- **40 companies** across Payments, Banking, Insurance, Lending, Crypto sectors
-- **60+ relationships** with impact percentages
-- **CEO career networks** linking companies through people
+Tested on a real-world FinTech dataset generated from LLM knowledge of actual companies:
+- **40 real companies** across Payments, Banking, Insurance, Lending, Crypto, Neobank, Wealth sectors
+- **60+ relationships** between actual industry players with impact percentages
+- **Real CEO career networks** linking companies through actual people
 - **Multi-level communities** capturing sector and industry dynamics
 
 ---
@@ -236,15 +282,16 @@ Tested on a synthetic-but-realistic FinTech dataset:
 ### 📍 TEST 1 — LOCAL Query (Specific Entity Relationship)
 
 ```
-Query: What is the exact relationship between Visa and PayPal?
+Query:  What is the exact relationship  between Visa and PayPal?
 
 Route:  LOCAL (Neo4j Subgraph)
         ├── Found 5 matching entities in Qdrant
-        └── Retrieved 3 relationships from Neo4j
+        └── Retrieved 20 relationships from Neo4j
 ```
 
 **Answer:**
-> The relationship between Visa and PayPal is a **FINANCIAL IMPACT** with an impact of **11.2%**.
+> Visa and PayPal have a PARTNER relationship with an impact of 2.0%. Additionally, PayPal also has a PARTNER relationship with Visa, but with a much smaller impact of 0.01%.
+
 
 ---
 
@@ -259,24 +306,28 @@ Route:  GLOBAL (Community Summaries)
 
 **Answer:**
 
-The FinTech payments industry is witnessing significant growth and innovation, driven by strategic partnerships, investments, and intense competition.
+The FinTech payments industry is characterized by several major trends and risks, driven by the complex interplay of partnerships, collaborations, and innovations. Based on the industry context, the key trends and risks can be summarized as follows:
 
-**Major Trends:**
+**Trends:**
 
-1. **Convergence of Digital Payments and Investment** — The digital payments space, led by players like EasyPay, is converging with the cryptocurrency sector where CryptoPay is a key player. This convergence is shaping the future of financial technologies and creating new growth opportunities.
+1. **Collaboration and Consolidation**: The industry is witnessing a significant increase in partnerships and collaborations between FinTech companies, traditional banks, and other financial institutions. This trend is driven by the need for strategic integration and the desire to leverage each other's strengths to drive innovation and growth.
+2. **Digital Transformation**: The shift towards digital transformation is a dominant theme in the FinTech industry, with companies like Nubank and Klarna at the forefront of this trend. This shift is driven by the increasing demand for digital payment solutions and the need for traditional banks to adapt to the changing landscape.
+3. **Convergence of Traditional Banking and FinTech**: The lines between traditional banking and FinTech are blurring, with companies like Klarna partnering with mainstream banks to expand their reach and capabilities. This convergence is expected to drive innovation and growth in the industry.
 
-2. **Collaborative Growth and Strategic Partnerships** — Companies like BankGenie, FastPay, and LendPal are forming partnerships with major players like PayPal, Mastercard, and Apple Pay to gain market traction and drive business impact.
+**Risks:**
 
-3. **Competitive Positioning** — The industry is characterized by intense competition, with companies like PayPlex, LendPal, and LoanPro competing with rivals such as BankPlus, Square, and SoFi.
+1. **Competition and Disruption**: The FinTech industry is highly competitive, with new entrants and innovations disrupting traditional business models. This competition poses a significant risk to established players, which must adapt to the changing landscape to remain relevant.
+2. **Regulatory Uncertainty**: The regulatory environment for FinTech is still evolving, with uncertainties surrounding issues like data protection, security, and compliance. This uncertainty poses a risk to companies operating in the industry, which must navigate complex regulatory requirements to avoid reputational and financial damage.
+3. **Integration and Scalability**: The integration of new technologies and partnerships can be complex and challenging, posing a risk to companies that struggle to scale their operations and maintain seamless customer experiences.
 
-4. **Investment in Digital Wallet Solutions** — Investment in digital wallets, online transaction services, and digital banking innovation is likely to yield significant returns.
+**Actionable Insights:**
 
-**Major Risks:**
+1. **Invest in Companies with Extensive Partnerships**: Investors should focus on companies with extensive partnerships and subsidiary relationships, as these are likely to drive long-term growth and competitiveness.
+2. **Prioritize Digital Transformation**: Companies that prioritize digital transformation and strategic integration are well-positioned to capitalize on the industry's growth potential.
+3. **Monitor Regulatory Developments**: Companies operating in the FinTech industry must closely monitor regulatory developments and adapt to changing requirements to avoid reputational and financial damage.
+4. **Focus on Innovation and Customer Experience**: Companies that prioritize innovation and customer experience are likely to thrive in the competitive FinTech landscape, where customer expectations are high and evolving rapidly.
 
-1. **Intense Competition** — The crowded market poses significant risk to companies that fail to differentiate themselves.
-2. **Regulatory Risks** — Evolving regulatory requirements can pose risk to non-compliant companies.
-3. **Security and Fraud Risks** — Increasing digital payments usage raises exposure to security breaches.
-4. **Partnership Risks** — Complex partnership webs create risk of collaboration failures.
+In conclusion, the FinTech payments industry is characterized by significant trends and risks, driven by the complex interplay of partnerships, collaborations, and innovations. By understanding these trends and risks, investors and companies can make informed decisions to capitalize on the industry's growth potential and navigate the challenges posed by this rapidly evolving landscape.
 
 ---
 
@@ -293,15 +344,17 @@ Financial-GraphRAG-Sprint1/
 ├── src/
 │   ├── config.py                 ← Centralized configuration
 │   ├── database.py               ← Neo4j + Qdrant connections
+│   │                                (explicit generator loop in run_query)
 │   ├── models.py                 ← Pydantic schemas
-│   ├── data_generation.py        ← Synthetic FinTech data pipeline
-│   ├── ingestion.py              ← Neo4j + Qdrant data ingestion
+│   ├── data_generation.py        ← Real FinTech company data pipeline
+│   ├── ingestion.py              ← Neo4j + Qdrant ingestion
+│   │                                (rich name+properties embedding)
 │   ├── community.py              ← Leiden detection + summarization
 │   ├── retrieval.py              ← Entity + summary retrieval
 │   └── pipeline.py               ← Master RAG controller
 │
 ├── notebooks/
-│   └── sprint1_walkthrough.ipynb ← Full pipeline walkthrough
+│   └── Financial_GraphRAG_Sprint1_MVP.ipynb  ← Full pipeline walkthrough
 │
 └── assets/
     ├── architecture.png          ← Pipeline architecture diagram
@@ -314,8 +367,8 @@ Financial-GraphRAG-Sprint1/
 
 ### 1. Clone & Install
 ```bash
-git clone https://github.com/YOUR_USERNAME/fintech-graphrag.git
-cd fintech-graphrag
+git clone https://github.com/huzaifa12466/Advanced-AI-Engineering-Lab
+cd Financial-GraphRAG-Sprint1
 pip install -r requirements.txt
 ```
 
@@ -328,7 +381,7 @@ cp .env.example .env
 
 ### 3. Run Full Setup (First Time Only)
 ```bash
-# Generates data → pushes to Neo4j → detects communities → pushes to Qdrant
+# Generates real company data → pushes to Neo4j → detects communities → pushes to Qdrant
 python main.py --setup
 ```
 
@@ -350,8 +403,8 @@ from src.database import Neo4jGraph, get_qdrant_client, get_embed_model, get_llm
 from src.pipeline import graphrag_query
 
 answer = graphrag_query(
-    query      = "What is Visa's impact on PayPal?",
-    graph_db   = Neo4jGraph(),
+    query         = "What is Visa's impact on PayPal?",
+    graph_db      = Neo4jGraph(),
     qdrant_client = get_qdrant_client(),
     embed_model   = get_embed_model(),
     llm           = get_llm()
@@ -359,10 +412,11 @@ answer = graphrag_query(
 print(answer)
 ```
 
+---
 
 ## Author
 
 **Huzaifa Qureshi** — AI/ML Engineer  
-[LinkedIn](https://linkedin.com/in/huzaifa-qureshi-ai) · [GitHub](https://github.com/YOUR_USERNAME)
+[LinkedIn](https://linkedin.com/in/huzaifa-qureshi-ai) · [GitHub](https://github.com/huzaifa12466)
 
 > *"Standing on the shoulders of Shannon, Turing, and Tesla."*

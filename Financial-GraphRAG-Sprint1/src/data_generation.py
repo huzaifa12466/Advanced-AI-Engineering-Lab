@@ -27,9 +27,13 @@ def generate_companies_list(instructor_client, n: int = NUM_COMPANIES) -> Compan
         messages=[{
             "role": "user",
             "content": (
-                f"Generate {n} unique fictional FinTech company names across diverse sectors "
-                "(Payments, Banking, Insurance, Lending, Crypto, FMCG, Telecom). "
-                "Return exactly matching companies and sectors lists."
+                f"Return a list of exactly {n} real, well-known FinTech and financial companies "
+                "from the global market. Include companies like Visa, Mastercard, PayPal, Stripe, "
+                "Square, Revolut, Robinhood, Coinbase, SoFi, Klarna, Affirm, Chime, Plaid, "
+                "Adyen, Brex, Nubank, Wise, Marqeta, Toast, Blend, and similar real companies "
+                "across sectors: Payments, Banking, Insurance, Lending, Crypto, Neobank, Wealth. "
+                "Return exactly matching companies and sectors lists — real companies only, "
+                "no fictional or made-up names."
             )
         }]
     )
@@ -60,10 +64,13 @@ def generate_company_details(
                 messages=[{
                     "role": "user",
                     "content": (
-                        f"Generate a realistic FinTech company profile for '{company}' "
-                        f"in the '{sector}' sector. Include CEO background, financial "
-                        "performance (profit/loss in millions), and 3-5 business "
-                        "relationships with impact percentages and relationship types."
+                        f"Generate a realistic profile for the real FinTech company '{company}' "
+                        f"in the '{sector}' sector. Use real-world knowledge about this company: "
+                        "include the real or most recent CEO, realistic financial performance "
+                        "(profit/loss in millions USD based on real data), and 3-5 real business "
+                        "relationships with other actual companies in the industry — include "
+                        "impact percentages and accurate relationship types (e.g. PARTNER, "
+                        "COMPETITOR, ACQUIRER, INVESTOR). Ground all details in reality."
                     )
                 }]
             )

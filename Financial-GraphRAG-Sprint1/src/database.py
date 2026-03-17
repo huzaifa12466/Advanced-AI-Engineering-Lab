@@ -39,6 +39,13 @@ class Neo4jGraph:
         """
         Execute a Cypher read query and return all records.
 
+        Neo4j's `session.run()` returns a lazy Result generator — records are
+        only fetched from the driver as you iterate. We consume the generator
+        with an explicit loop inside the session context so the connection stays
+        open while data is being read. Assigning the result directly or calling
+        list() outside the `with` block would close the session before the
+        records are materialised.
+
         Args:
             query:      Cypher query string
             parameters: Query parameters dict
@@ -48,7 +55,10 @@ class Neo4jGraph:
         """
         with self.driver.session() as session:
             result = session.run(query, parameters or {})
-            return [record for record in result]
+            records = []
+            for record in result:   # consume the generator while session is live
+                records.append(record)
+            return records
 
     def session(self):
         """Return a raw session for complex transactions."""
