@@ -69,6 +69,8 @@ We solve this with **three innovations**:
 
 ## 3. Core Architecture
 
+![Pipeline Architecture](assets/graphrag_architecture.png)
+
 ```
                         USER QUERY
                             │
@@ -269,6 +271,8 @@ Unlike Microsoft GraphRAG or LlamaIndex PropertyGraph (which are installation-an
 
 ### Real Financial Network Data
 
+![GraphRAG Stats](assets/graphrag_stats.png)
+
 Tested on a real-world FinTech dataset generated from LLM knowledge of actual companies:
 - **40 real companies** across Payments, Banking, Insurance, Lending, Crypto, Neobank, Wealth sectors
 - **60+ relationships** between actual industry players with impact percentages
@@ -282,7 +286,7 @@ Tested on a real-world FinTech dataset generated from LLM knowledge of actual co
 ### 📍 TEST 1 — LOCAL Query (Specific Entity Relationship)
 
 ```
-Query:  What is the exact relationship  between Visa and PayPal?
+Query:  What is the exact relationship between Visa and PayPal?
 
 Route:  LOCAL (Neo4j Subgraph)
         ├── Found 5 matching entities in Qdrant
@@ -291,7 +295,6 @@ Route:  LOCAL (Neo4j Subgraph)
 
 **Answer:**
 > Visa and PayPal have a PARTNER relationship with an impact of 2.0%. Additionally, PayPal also has a PARTNER relationship with Visa, but with a much smaller impact of 0.01%.
-
 
 ---
 
@@ -306,28 +309,19 @@ Route:  GLOBAL (Community Summaries)
 
 **Answer:**
 
-The FinTech payments industry is characterized by several major trends and risks, driven by the complex interplay of partnerships, collaborations, and innovations. Based on the industry context, the key trends and risks can be summarized as follows:
+The FinTech payments industry is characterized by several major trends and risks, driven by the complex interplay of partnerships, collaborations, and innovations.
 
 **Trends:**
 
-1. **Collaboration and Consolidation**: The industry is witnessing a significant increase in partnerships and collaborations between FinTech companies, traditional banks, and other financial institutions. This trend is driven by the need for strategic integration and the desire to leverage each other's strengths to drive innovation and growth.
-2. **Digital Transformation**: The shift towards digital transformation is a dominant theme in the FinTech industry, with companies like Nubank and Klarna at the forefront of this trend. This shift is driven by the increasing demand for digital payment solutions and the need for traditional banks to adapt to the changing landscape.
-3. **Convergence of Traditional Banking and FinTech**: The lines between traditional banking and FinTech are blurring, with companies like Klarna partnering with mainstream banks to expand their reach and capabilities. This convergence is expected to drive innovation and growth in the industry.
+1. **Collaboration and Consolidation** — The industry is witnessing a significant increase in partnerships between FinTech companies, traditional banks, and other financial institutions, driven by the need for strategic integration.
+2. **Digital Transformation** — Companies like Nubank and Klarna are at the forefront of this shift, driven by increasing demand for digital payment solutions.
+3. **Convergence of Traditional Banking and FinTech** — The lines between traditional banking and FinTech are blurring, with companies like Klarna partnering with mainstream banks to expand their reach.
 
 **Risks:**
 
-1. **Competition and Disruption**: The FinTech industry is highly competitive, with new entrants and innovations disrupting traditional business models. This competition poses a significant risk to established players, which must adapt to the changing landscape to remain relevant.
-2. **Regulatory Uncertainty**: The regulatory environment for FinTech is still evolving, with uncertainties surrounding issues like data protection, security, and compliance. This uncertainty poses a risk to companies operating in the industry, which must navigate complex regulatory requirements to avoid reputational and financial damage.
-3. **Integration and Scalability**: The integration of new technologies and partnerships can be complex and challenging, posing a risk to companies that struggle to scale their operations and maintain seamless customer experiences.
-
-**Actionable Insights:**
-
-1. **Invest in Companies with Extensive Partnerships**: Investors should focus on companies with extensive partnerships and subsidiary relationships, as these are likely to drive long-term growth and competitiveness.
-2. **Prioritize Digital Transformation**: Companies that prioritize digital transformation and strategic integration are well-positioned to capitalize on the industry's growth potential.
-3. **Monitor Regulatory Developments**: Companies operating in the FinTech industry must closely monitor regulatory developments and adapt to changing requirements to avoid reputational and financial damage.
-4. **Focus on Innovation and Customer Experience**: Companies that prioritize innovation and customer experience are likely to thrive in the competitive FinTech landscape, where customer expectations are high and evolving rapidly.
-
-In conclusion, the FinTech payments industry is characterized by significant trends and risks, driven by the complex interplay of partnerships, collaborations, and innovations. By understanding these trends and risks, investors and companies can make informed decisions to capitalize on the industry's growth potential and navigate the challenges posed by this rapidly evolving landscape.
+1. **Competition and Disruption** — New entrants and innovations are disrupting traditional business models, posing significant risk to established players.
+2. **Regulatory Uncertainty** — Evolving requirements around data protection, security, and compliance pose ongoing risk.
+3. **Integration and Scalability** — Complex partnerships can be challenging to scale while maintaining seamless customer experiences.
 
 ---
 
@@ -357,7 +351,7 @@ Financial-GraphRAG-Sprint1/
 │   └── Financial_GraphRAG_Sprint1_MVP.ipynb  ← Full pipeline walkthrough
 │
 └── assets/
-    ├── architecture.png          ← Pipeline architecture diagram
+    ├── graphrag_architecture.png ← Pipeline architecture diagram
     └── graphrag_stats.png        ← Graph statistics visualization
 ```
 
